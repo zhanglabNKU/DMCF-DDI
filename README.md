@@ -3,7 +3,7 @@
 This repository contains codes necessary to run the DMCF-DDI algorithm.
 
 ## Framework
-![An overall architecture of DMCF-DDI.](./Fig.1.png)
+![An overall architecture of DMCF-DDI.](Fig.1.png)
 (a) An overall architecture of DMCF-DDI. The fingerprint matrix and drug knowledge graph with initial embedding are the inputs of two modalities, respectively.
 GCN-encoder learns the two semanti c-level features of each modality with two-layer RGCN. 
 Then, the fine-grained drug pair representations (DPRs) are obtained by complex-valued fusion. 
