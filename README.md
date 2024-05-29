@@ -5,15 +5,15 @@ This repository contains codes necessary to run the DMCF-DDI algorithm.
 ## Framework
 ![An overall architecture of DMCF-DDI.](Fig.1.png)
 (a) An overall architecture of DMCF-DDI. The fingerprint matrix and drug knowledge graph with initial embedding are the inputs of two modalities, respectively.
-GCN-encoder learns the two semanti c-level features of each modality with two-layer RGCN. 
+GCN-encoder learns the two semantic-level features of each modality with two-layer RGCN. 
 Then, the fine-grained drug pair representations (DPRs) are obtained by complex-valued fusion. 
 Finally, the probability $y_{ij}^r$ of the drug pair having the side effect $r$ is predicted using a classifier based on the complex hyperplane $(Re(w_r),Im(w_r))$.
 (b) Complex-valued fusion.
 Skip connection integrates the output of RGCN-encoders $H_{fp}$ with the initial modal features $S_{fp}$ through addition. 
-Modal features represent the real and imaginary parts of drug complex features $z_i$ and $z_j$, complex-vector product fuses them into $Z^{sc}_{ij}$.
+Modal features represent the real and imaginary parts of drug complex features $z_i$ and $z_j$, complex-vector product fuses them into $Z_{ij}^{sc}$.
 Asymmetric skip connection adds the encoder output and initial features from one drug pair but in different orders (e.g. $S_{fp}[i] + H_{fp}[j]$) to form DPRs.
-DPRs represent the real and imaginary parts of complex features of drug pair $H_{ij}$ and $H_{ji}$, complex-vector product fuses them into $Z^{asc}_{ij}$.
-The fused modal features positive drug pair are highly similar, causing the components of $Z^{sc}_{ij}$ and $Z^{asc}_{ij}$ to cluster around the imaginary axis.
+DPRs represent the real and imaginary parts of complex features of drug pair $H_{ij}$ and $H_{ji}$, complex-vector product fuses them into $Z_{ij}^{asc}$.
+The fused modal features positive drug pair are highly similar, causing the components of $Z_{ij}^{sc}$ and $Z_{ij}^{asc}$ to cluster around the imaginary axis.
 ## Running Environment
 - Python == 3.8.0
 - PyTorch == 1.13.1
