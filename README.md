@@ -13,7 +13,7 @@ Skip connection integrates the output of RGCN-encoders $H_{fp}$ with the initial
 Modal features represent the real and imaginary parts of drug complex features $z_i$ and $z_j$, complex-vector product fuses them into $Z^{sc}_{ij}$.
 Asymmetric skip connection adds the encoder output and initial features from one drug pair but in different orders (e.g. $S_{fp}[i] + H_{fp}[j]$) to form DPRs.
 DPRs represent the real and imaginary parts of complex features of drug pair $H_{ij}$ and $H_{ji}$, complex-vector product fuses them into $Z^{asc}_{ij}$.
-The fused modal features positive drug pair are highly similar, causing the components of  $Z^{sc}_{ij}$ and $Z^{asc}_{ij}$ to cluster around the imaginary axis.
+The fused modal features positive drug pair are highly similar, causing the components of $Z^{sc}_{ij}$ and $Z^{asc}_{ij}$ to cluster around the imaginary axis.
 ## Running Environment
 - Python == 3.8.0
 - PyTorch == 1.13.1
