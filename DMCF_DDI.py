@@ -106,10 +106,10 @@ class complex_fuse_base(nn.Module):
         if self.ablation['method'] == 'SC':
             x1_intra = x1 + x_fp
             x2_intra = x2 + x_drug_skip
-            R1 = x1_intra[idx1]  # h
-            Ima1 = x2_intra[idx1]  # h
-            R2 = x2_intra[idx2]  # t
-            Ima2 = x1_intra[idx2]  # t
+            R1 = x1_intra[idx1]
+            Ima1 = x2_intra[idx1]
+            R2 = x2_intra[idx2]
+            Ima2 = x1_intra[idx2]
             R1 = self.layer_norm_weight(R1)
             Ima1 = self.layer_norm_weight(Ima1)
             R2 = self.layer_norm_weight(R2)
@@ -131,7 +131,7 @@ class complex_fuse_base(nn.Module):
                 if self.o_fun == 'RE':
                     output = torch.sigmoid(r_)
 
-        elif self.method == 'quate':
+        if self.ablation['method'] == 'quate':
             x1 = self.layer_norm_weight(x1)
             x2 = self.layer_norm_weight(x2)
             x_fp = self.layer_norm_weight(x_fp)
@@ -147,6 +147,53 @@ class complex_fuse_base(nn.Module):
                                    self.b_relation[idx3])
 
         return output
+
+    def get_R_Ima(self, fp, drug_node_id, kg_node_id, adj_list, idx1, idx2):
+        drug_fp, drug_init, x1, x2 = self.encoder(fp, drug_node_id, kg_node_id, adj_list)
+
+        drug_fp = F.elu(self.layer_norm_weight_hdim(drug_fp))
+        x_fp = F.elu(self.fp_fc_layer(drug_fp))
+        x_drug_skip = self.skip_fc_layer(drug_init)
+        if self.ablation['method'] == 'ASC':
+            R1 = x1[idx1] + x_fp[idx2]
+            Ima1 = x2[idx1] + x_drug_skip[idx2]
+            R2 = x_drug_skip[idx1] + x2[idx2]
+            Ima2 = x_fp[idx1] + x1[idx2]
+
+            if self.cmlp:
+                R1, Ima1 = self.complex_nn(R1, Ima1,
+                                           self.rela_linear_r1, self.rela_linear_i1)
+                R2, Ima2 = self.complex_nn(R2, Ima2,
+                                           self.rela_linear_r2, self.rela_linear_i2)
+
+            R1 = self.layer_norm_weight(R1)
+            Ima1 = self.layer_norm_weight(Ima1)
+            R2 = self.layer_norm_weight(R2)
+            Ima2 = self.layer_norm_weight(Ima2)
+
+            R, Ima = self.complex_mult(R1, Ima1, R2, Ima2)
+
+            R = self.layer_norm_weight(R)
+            Ima = self.layer_norm_weight(Ima)
+
+        if self.ablation['method'] == 'SC':
+            x1_intra = x1 + x_fp
+            x2_intra = x2 + x_drug_skip
+            R1 = x1_intra[idx1]  # h
+            Ima1 = x2_intra[idx1]  # h
+            R2 = x2_intra[idx2]  # t
+            Ima2 = x1_intra[idx2]  # t
+            R1 = self.layer_norm_weight(R1)
+            Ima1 = self.layer_norm_weight(Ima1)
+            R2 = self.layer_norm_weight(R2)
+            Ima2 = self.layer_norm_weight(Ima2)
+
+            R, Ima = self.complex_mult(R1, Ima1, R2, Ima2)
+
+            R = self.layer_norm_weight(R)
+            Ima = self.layer_norm_weight(Ima)
+
+        return R, Ima
 
     def complex_mult(self, R1, Ima1, R2, Ima2):
         R = R1 * R2 - Ima1 * Ima2
