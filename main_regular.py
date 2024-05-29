@@ -1,19 +1,23 @@
+import torch
 import torch as th
 import numpy as np
 import time
 import torch.nn as nn
 from DMCF_DDI import complex_fuse_base
 import os
-from utlis import datasets, arange_batch, get_path
-from metric import class_auc, class_aupr, mapk_, class_acc
+from utils import datasets, arange_batch, get_path
+from metric import class_auc, class_aupr, mapk_, class_acc, apk_, class_hitn
 from tqdm import tqdm
 import logging
 import argparse
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score,\
+precision_recall_curve, auc
+
 
 def epoch_train(ite, dev, exper_name, size,
                 fp, dd_mat, dt_mat, ppi_mat, batchTrain_dataset,
                 val_sample, val_SE, val_label,
-                out_dim, lr, batch_size, ablation, drug_mark, o_fun, classifier):
+                out_dim, lr, epochs, ablation, drug_mark, o_fun, classifier):
     # ---------------------------------------------------#
     drug_node_num = dd_mat.shape[0]
     drug_node_id = th.arange(0, drug_node_num, 1).to(dev)
@@ -50,9 +54,8 @@ def epoch_train(ite, dev, exper_name, size,
     # ---------------------------------------------------#
     batch_num = len(batchTrain_dataset.keys())
     batch_idx = list(range(batch_num))
-    # batch_idx = list(range(25))
     TS_time = time.time()
-    for epoch in range(50):
+    for epoch in range(epochs):
         es_time = time.time()
         print('##################  Train  #####################')
         for i in tqdm(batch_idx):
@@ -214,6 +217,7 @@ def main(args):
     lr = args.lr
     batch_size = args.batch_size
     size = args.size
+    epochs = args.epochs
 
     NEGA_NUM = args.NEGA_NUM
 
@@ -222,7 +226,8 @@ def main(args):
     o_fun = args.o_fun
     classifier = args.classifier
     date = args.date
-    dev = args.device
+    # dev = args.device
+    dev = th.device('cuda' if th.cuda.is_available() else 'cpu')
     method_log = '{}-{}-{}'.format(ablation['method'], o_fun, classifier)
 
     header = '../regular/'
@@ -254,7 +259,7 @@ def main(args):
         results[ite] = epoch_train(ite, dev, exper_name, size,
                                    fp, dd_mat, dt_mat, ppi_mat, batchTrain_dataset,
                                    val_sample, val_SE, val_label,
-                                   out_dim, lr, batch_size, ablation,
+                                   out_dim, lr, epochs, ablation,
                                    drug_mark, o_fun, classifier)
 
     ite5_etime = time.time()
@@ -274,7 +279,8 @@ def main(args):
 
     test_acc_list, test_map_list, test_auc_list, test_aupr_list = [], [], [], []
     acc_tensor_list, map_tensor_list, auc_tensor_list, aupr_tensor_list = [], [], [], []
-
+    micro_acc, micro_pre, micro_rec, micro_f1 = [], [], [], []
+    micro_auc, micro_aupr, micro_map, hits_5, hits_10 = [], [], [], [], []
     for ite in range(5):
         print('{} Iteration'.format(ite))
         test_output = model_eval(ite, dev, exper_name, size,
@@ -301,65 +307,125 @@ def main(args):
         auc_tensor_list.append(test_auc_tensor)
         aupr_tensor_list.append(test_aupr_tensor)
 
+        test_pred = (test_output > 0.5).float().cpu().detach().numpy()
+        micro_acc.append(accuracy_score(test_label.numpy(), test_pred))
+        micro_pre.append(precision_score(test_label.numpy(), test_pred))
+        micro_rec.append(recall_score(test_label.numpy(), test_pred))
+        micro_f1.append(f1_score(test_label.numpy(), test_pred))
+        micro_auc.append(roc_auc_score(test_label.numpy(), test_output.cpu().detach().numpy()))
+        precision, recall, _ = precision_recall_curve(test_label.numpy(), test_output.cpu().detach().numpy())
+        micro_aupr.append(auc(recall, precision))
+        true = th.nonzero(test_label).reshape(-1).tolist()
+        ind = th.sort(test_output, descending=True)[1].tolist()
+        micro_map.append(apk_(true, ind, 50))
+        hits_5.append(class_hitn(test_output, test_label, test_SE, 5))
+        hits_10.append(class_hitn(test_output, test_label, test_SE, 10))
+
     mean_test_acc = th.mean(th.tensor(test_acc_list))
     mean_test_map = th.mean(th.tensor(test_map_list))
     mean_test_auc = th.mean(th.tensor(test_auc_list))
     mean_test_aupr = th.mean(th.tensor(test_aupr_list))
+    mean_micro_acc = th.mean(th.tensor(micro_acc))
+    mean_micro_pre = th.mean(th.tensor(micro_pre))
+    mean_micro_rec = th.mean(th.tensor(micro_rec))
+    mean_micro_f1 = th.mean(th.tensor(micro_f1))
+    mean_micro_auc = th.mean(th.tensor(micro_auc))
+    mean_micro_aupr = th.mean(th.tensor(micro_aupr))
+    mean_micro_map = th.mean(th.tensor(micro_map))
+    mean_hits_5 = th.mean(th.tensor(hits_5))
+    mean_hits_10 = th.mean(th.tensor(hits_10))
     print('------5 times results-------')
     print('mean acc: {:.4f}\nmean auc: {:.4f}\nmean aupr: {:.4f}\nMAP@50: {:.4f}'.format(mean_test_acc,
                                                                                          mean_test_auc,
                                                                                          mean_test_aupr,
                                                                                          mean_test_map))
+    print('Micro:: acc: {:.4f}\npre: {:.4f}\nrec: {:.4f}\nF1: {:.4f}'.format(mean_micro_acc,
+                                                                             mean_micro_pre,
+                                                                             mean_micro_rec,
+                                                                             mean_micro_f1))
+    print('Micro:: AUC: {:.4f}\nAUPR: {:.4f}\nAP50: {:.4f}'.format(mean_micro_auc,
+                                                                   mean_micro_aupr,
+                                                                   mean_micro_map))
+    print('Hits@5: {:.4f}\nHits@10: {:.4f}'.format(mean_hits_5, mean_hits_10))
     logging.info('mean acc: {:.4f}\nmean auc: {:.4f}\nmean aupr: {:.4f}\nMAP@50: {:.4f}'.format(mean_test_acc,
                                                                                                 mean_test_auc,
                                                                                                 mean_test_aupr,
                                                                                                 mean_test_map))
+    logging.info('Micro:: acc: {:.4f}\npre: {:.4f}\nrec: {:.4f}\nF1: {:.4f}'.format(mean_micro_acc,
+                                                                                    mean_micro_pre,
+                                                                                    mean_micro_rec,
+                                                                                    mean_micro_f1))
+    logging.info('Micro:: AUC: {:.4f}\nAUPR: {:.4f}\nAP50: {:.4f}'.format(mean_micro_auc,
+                                                                          mean_micro_aupr,
+                                                                          mean_micro_map))
+    logging.info('Hits@5: {:.4f}\nHits@10: {:.4f}'.format(mean_hits_5, mean_hits_10))
 
     var_test_acc = th.var(th.tensor(test_acc_list))
     var_test_map = th.var(th.tensor(test_map_list))
     var_test_auc = th.var(th.tensor(test_auc_list))
     var_test_aupr = th.var(th.tensor(test_aupr_list))
+    var_micro_acc = th.var(th.tensor(micro_acc))
+    var_micro_pre = th.var(th.tensor(micro_pre))
+    var_micro_rec = th.var(th.tensor(micro_rec))
+    var_micro_f1 = th.var(th.tensor(micro_f1))
+    var_micro_auc = th.var(th.tensor(micro_auc))
+    var_micro_aupr = th.var(th.tensor(micro_aupr))
+    var_micro_map = th.var(th.tensor(micro_map))
+    var_hits_5 = th.var(th.tensor(hits_5))
+    var_hits_10 = th.var(th.tensor(hits_10))
     print('------5 times results-------')
     print('var acc: {:.4f}\nvar auc: {:.4f}\nvar aupr: {:.4f}\nMAP@50: {:.4f}'.format(var_test_acc,
                                                                                       var_test_auc,
                                                                                       var_test_aupr,
                                                                                       var_test_map))
+    print('Micro acc: {:.4f}\npre: {:.4f}\nrec: {:.4f}\nF1: {:.4f}'.format(var_micro_acc,
+                                                                           var_micro_pre,
+                                                                           var_micro_rec,
+                                                                           var_micro_f1))
+    print('Micro:: AUC: {:.4f}\nAUPR: {:.4f}\nAP50: {:.4f}'.format(var_micro_auc,
+                                                                   var_micro_aupr, var_micro_map))
+    print('Hits@5: {:.4f}\nHits@10: {:.4f}'.format(var_hits_5, var_hits_10))
     logging.info('var acc: {:.4f}\nvar auc: {:.4f}\nvar aupr: {:.4f}\nMAP@50: {:.4f}'.format(var_test_acc,
                                                                                              var_test_auc,
                                                                                              var_test_aupr,
                                                                                              var_test_map))
-    th.save(test_acc_list, exper_name + '/test_acc_list.pth')
-    th.save(test_auc_list, exper_name + '/test_auc_list.pth')
-    th.save(test_aupr_list, exper_name + '/test_aupr_list.pth')
-    th.save(test_map_list, exper_name + '/test_map_list.pth')
-
-    th.save(acc_tensor_list, exper_name + '/acc_tensor_list.pth')
-    th.save(auc_tensor_list, exper_name + '/auc_tensor_list.pth')
-    th.save(aupr_tensor_list, exper_name + '/aupr_tensor_list.pth')
-    th.save(map_tensor_list, exper_name + '/map_tensor_list.pth')
+    logging.info('Micro acc: {:.4f}\npre: {:.4f}\nrec: {:.4f}\nF1: {:.4f}'.format(var_micro_acc,
+                                                                                  var_micro_pre,
+                                                                                  var_micro_rec,
+                                                                                  var_micro_f1))
+    logging.info('Micro:: AUC: {:.4f}\nAUPR: {:.4f}\nAP50: {:.4f}'.format(var_micro_auc,
+                                                                          var_micro_aupr, var_micro_map))
+    logging.info('Hits@5: {:.4f}\nHits@10: {:.4f}'.format(var_hits_5, var_hits_10))
+    # th.save(test_acc_list, exper_name + '/test_acc_list.pth')
+    # th.save(test_auc_list, exper_name + '/test_auc_list.pth')
+    # th.save(test_aupr_list, exper_name + '/test_aupr_list.pth')
+    # th.save(test_map_list, exper_name + '/test_map_list.pth')
+    #
+    # th.save(acc_tensor_list, exper_name + '/acc_tensor_list.pth')
+    # th.save(auc_tensor_list, exper_name + '/auc_tensor_list.pth')
+    # th.save(aupr_tensor_list, exper_name + '/aupr_tensor_list.pth')
+    # th.save(map_tensor_list, exper_name + '/map_tensor_list.pth')
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--out_dim', type=int, default=64, help='The dimension of output.')
     parser.add_argument('--epochs', type=int, default=20)
-    parser.add_argument('--lr', type=float, default=0.0005,  help="Learning rate")
+    parser.add_argument('--lr', type=float, default=0.001,  help="Learning rate")
     parser.add_argument('--batch_size', type=int, default=5, help='The batch size for side effect')
     parser.add_argument('--size', type=int, default=4, help='The batch size for validation set')
     parser.add_argument('--NEGA_NUM', type=str, default='1to1',
                         help='Num. of positive samples: Num. of negative samples')
-    parser.add_argument('--task', type=str, default='c2',
-                        help='Task A: c2, Task B: c3')
     parser.add_argument('--method', type=str, default='ASC', help='ASC, SC or quate')
     parser.add_argument('--cmlp', type=bool, default=False,  help='Whether use complex-valued linear transformation')
     parser.add_argument('--o_fun', type=str, default='RE', help='SUM or RE')
     parser.add_argument('--classifier', type=str, default='cip', help='mlp or cip')
     parser.add_argument('--date', type=str, default='23.xx.xx', help='Experiment date')
-    arg = parser.parse_args()
+    args = parser.parse_args()
 
     device = th.device('cuda' if th.cuda.is_available() else 'cpu')
-    arg.device = device
+    args.device = device
 
-    main(arg)
+    main(args)
 
 

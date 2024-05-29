@@ -115,7 +115,7 @@ class rela_graph_node_update(nn.Module):
             x1 = x1.reshape(-1, self.out_feat)
             if torch.sum(torch.isnan(x1)) > 0:
                 get_nan(x1, 'x1', 'drug node update: drug-drug; before agg')
-            x1 = torch.mm(adj[0], x1)
+            x1 = torch.mm(self.dp(adj[0]), x1)
             if torch.sum(torch.isnan(x1)) > 0:
                 get_nan(x1, 'x1', 'drug node update: drug-drug; after agg')
 
@@ -247,13 +247,14 @@ class encoder(nn.Module):
                                              h_dim, out_dim, num_base, target_num,
                                              dropout, drug_mark)
 
+        self.dp = nn.Dropout(dropout)
     def forward(self,
                 fp,
                 drug_node_id,
                 kg_node_id,
                 adj_list  # [d-d, d-t, p-p, d-p]
                 ):
-        drug_fp, x1 = self.gnn_fp(adj_list[0], fp)
+        drug_fp, x1 = self.gnn_fp(self.dp(adj_list[0]), fp)
         drug_init, x2 = self.gnn_protein(drug_node_id, kg_node_id, adj_list)
 
         return drug_fp, drug_init, x1, x2

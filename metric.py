@@ -144,3 +144,37 @@ def tc_class_acc(output, label, side_effect):
     acc_tensor = th.tensor(acc_tensor)
     mean_acc = th.mean(acc_tensor)
     return mean_acc, acc_tensor
+
+
+def eval_hits(pred_pos, pred_neg, K):
+    if K > len(pred_neg):
+        kth_score_in_neg = th.sort(pred_neg, descending=True)[0][-1]
+    else:
+        kth_score_in_neg = th.topk(pred_neg, K)[0][-1]
+    hitn = (pred_pos > kth_score_in_neg).float().mean().item()
+    return hitn
+
+
+def class_hitn(output, label, side_effect, hitk):
+    hit_tensor = []
+    for se in range(964):
+        se_output = output[side_effect == se]
+        se_label = label[side_effect == se]
+        hitn = eval_hits(se_output[se_label == 1], se_output[se_label == 0], hitk)
+        hit_tensor.append(hitn)
+    hit_tensor = th.tensor(hit_tensor)
+    mean_hit = th.mean(hit_tensor)
+    return mean_hit.item()
+
+
+def tc_class_hitn(output, label, side_effect, hitk):
+    hit_tensor = []
+    for se in range(964):
+        if (side_effect == se).float().sum() > 0:
+            se_output = output[side_effect == se]
+            se_label = label[side_effect == se]
+            hitn = eval_hits(se_output[se_label == 1], se_output[se_label == 0], hitk)
+            hit_tensor.append(hitn)
+    hit_tensor = th.tensor(hit_tensor)
+    mean_hit = th.mean(hit_tensor)
+    return mean_hit.item()
